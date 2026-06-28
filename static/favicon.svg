@@ -1,24 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Bull Run">
   <defs>
-    <linearGradient id="br-emerald" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2bd9a6"/>
-      <stop offset="1" stop-color="#15a37b"/>
+    <linearGradient id="lg-stroke" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#15a37b"/>
+      <stop offset="1" stop-color="#3df0bd"/>
+    </linearGradient>
+    <linearGradient id="lg-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22c997" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#22c997" stop-opacity="0"/>
     </linearGradient>
   </defs>
-
-  <!-- App-icon badge -->
   <rect width="40" height="40" rx="10" fill="#0e1116"/>
-  <rect x="0.6" y="0.6" width="38.8" height="38.8" rx="9.4" fill="none" stroke="#22c997" stroke-opacity="0.22"/>
-
-  <!-- Longhorn bull horns: a bold crescent with the tips sweeping up -->
-  <path d="M6.5 13 C 8 20.5, 13.5 23.5, 20 23.5 C 26.5 23.5, 32 20.5, 33.5 13"
-        fill="none" stroke="url(#br-emerald)" stroke-width="3.3"
-        stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- The "run": an upward arrow bursting up between the horns -->
-  <path d="M20 27 L20 11.5"
-        fill="none" stroke="#3df0bd" stroke-width="3.1" stroke-linecap="round"/>
-  <path d="M14.4 17 L20 11 L25.6 17"
-        fill="none" stroke="#3df0bd" stroke-width="3.1"
-        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="0.7" y="0.7" width="38.6" height="38.6" rx="9.3" fill="none" stroke="#22c997" stroke-opacity="0.22"/>
+  <g fill="#22c997" opacity="0.55">
+    <rect x="9.2"  y="23" width="3" height="6"  rx="1"/>
+    <rect x="15.4" y="19" width="3" height="10" rx="1"/>
+    <rect x="21.6" y="15" width="3" height="14" rx="1"/>
+  </g>
+  <path d="M7 28 L13 24 L19 25.5 L25 18 L32 11 L32 30 L7 30 Z" fill="url(#lg-fill)"/>
+  <path d="M7 28 L13 24 L19 25.5 L25 18 L32 11" fill="none" stroke="url(#lg-stroke)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M26 11 L32 11 L32 17" fill="none" stroke="url(#lg-stroke)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="32" cy="11" r="2.4" fill="#3df0bd"/>
 </svg>
