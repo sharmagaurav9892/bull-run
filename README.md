@@ -197,8 +197,8 @@ manual step. Cloudflare and the custom domain keep working as-is.
   is much more reliable from cloud hosts.
 - **Piotroski and Altman Z need 2 years of statements.** Newly listed
   companies will show N/A for these until enough history is available.
-- **CSV upload is capped at 200 tickers per request** to keep response
-  times reasonable on the free tier. Split bigger lists into multiple
-  uploads.
+- **CSV/TXT upload accepts any number of tickers.** They're fetched
+  internally in batched blocks of 200, so large lists just take longer
+  rather than being rejected.
 - **All data is cached for 10–15 minutes** in memory to be a good
   citizen with upstream APIs. Restarts clear the cache.
