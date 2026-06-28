@@ -32,6 +32,15 @@
     groupReturns: document.getElementById("groupReturns"),
     lookupHolding: document.getElementById("lookupHolding"),
     holdingPeriod: document.getElementById("holdingPeriod"),
+    aboutGroup: document.getElementById("aboutGroup"),
+    aboutText: document.getElementById("aboutText"),
+    aboutLinks: document.getElementById("aboutLinks"),
+    aboutWebsite: document.getElementById("aboutWebsite"),
+    proconGroup: document.getElementById("proconGroup"),
+    prosList: document.getElementById("prosList"),
+    consList: document.getElementById("consList"),
+    newsGroup: document.getElementById("newsGroup"),
+    newsList: document.getElementById("newsList"),
     rangeToggle: document.getElementById("rangeToggle"),
     chartCanvas: document.getElementById("lookupChart"),
     chartState: document.getElementById("chartState"),
@@ -406,6 +415,10 @@
       ? `${data.sector}${data.industry ? " · " + data.industry : ""}`
       : "Sector N/A";
 
+    renderAbout(data);
+    renderProsCons(data);
+    renderNews(data);
+
     els.lookupPrice.textContent = f.current_price !== null && f.current_price !== undefined
       ? "₹ " + Number(f.current_price).toLocaleString("en-IN", { maximumFractionDigits: 2 })
       : "—";
@@ -449,19 +462,25 @@
       { label: "5 Years", value: fmtPct(data.returns?.["5y"]), trend: data.returns?.["5y"] },
     ].map(statCard).join("");
 
-    // -------- Group 5: Shareholding --------
+    // -------- Group 5: Shareholding (with change vs last quarter) --------
     const sh = f.shareholding;
     if (sh) {
-      els.holdingPeriod.textContent = sh.period ? `as of ${sh.period}` : "";
+      const ch = sh.changes || {};
+      els.holdingPeriod.textContent = sh.period
+        ? (sh.prev_period ? `${sh.period} · Δ vs ${sh.prev_period}` : `as of ${sh.period}`)
+        : "";
       const cells = [
-        { label: "Promoter", value: sh.promoter, color: "#22c997" },
-        { label: "FII",      value: sh.fii,      color: "#54e6b8" },
-        { label: "DII",      value: sh.dii,      color: "#f0b429" },
-        { label: "Public",   value: sh.public,   color: "#8b95a5" },
+        { label: "Promoter", value: sh.promoter, change: ch.promoter, color: "#22c997" },
+        { label: "FII",      value: sh.fii,      change: ch.fii,      color: "#54e6b8" },
+        { label: "DII",      value: sh.dii,      change: ch.dii,      color: "#f0b429" },
+        { label: "Public",   value: sh.public,   change: ch.public,   color: "#8b95a5" },
       ];
       els.lookupHolding.innerHTML = cells.map((c) => `
         <div class="holding-cell">
-          <span class="holding-cell__label">${c.label}</span>
+          <div class="holding-cell__head">
+            <span class="holding-cell__label">${c.label}</span>
+            ${holdingDelta(c.change)}
+          </div>
           <span class="holding-cell__value">${c.value !== null && c.value !== undefined ? c.value.toFixed(2) + "%" : "—"}</span>
           <div class="holding-bar">
             <div class="holding-bar__fill" style="width:${Math.min(100, c.value || 0)}%; background:${c.color}"></div>
@@ -474,6 +493,115 @@
         Shareholding data isn't available for this stock right now.
       </div>`;
     }
+  }
+
+  // Change pill for shareholding (▲ +0.53 / ▼ -0.71 / flat).
+  function holdingDelta(change) {
+    if (change === null || change === undefined) return "";
+    if (Math.abs(change) < 0.005) {
+      return `<span class="holding-delta holding-delta--flat">±0.00</span>`;
+    }
+    const up = change > 0;
+    const cls = up ? "holding-delta--up" : "holding-delta--down";
+    const arrow = up ? "▲" : "▼";
+    return `<span class="holding-delta ${cls}">${arrow} ${up ? "+" : ""}${change.toFixed(2)}</span>`;
+  }
+
+  // -------- About + official links --------
+  function renderAbout(data) {
+    const about = (data.about || "").trim();
+    const website = data.website;
+    const industry = data.industry_link;
+    if (!about && !website && !industry) {
+      els.aboutGroup.hidden = true;
+      return;
+    }
+    els.aboutGroup.hidden = false;
+    els.aboutText.textContent = about || "No description available.";
+
+    // Website link sits inline on the section heading.
+    if (website) {
+      els.aboutWebsite.hidden = false;
+      els.aboutWebsite.href = website;
+      els.aboutWebsite.textContent = "↗ " + prettyHost(website);
+    } else {
+      els.aboutWebsite.hidden = true;
+    }
+
+    // Industry + exchange links row under the blurb.
+    const links = [];
+    if (industry && industry.name) {
+      links.push(`<a class="about-chip" href="${escapeAttr(industry.url)}" target="_blank" rel="noopener noreferrer">
+        <span class="about-chip__k">Industry</span><span class="about-chip__v">${escapeHtml(industry.name)} ↗</span>
+      </a>`);
+    }
+    if (data.sector) {
+      links.push(`<span class="about-chip about-chip--static">
+        <span class="about-chip__k">Sector</span><span class="about-chip__v">${escapeHtml(data.sector)}</span>
+      </span>`);
+    }
+    els.aboutLinks.innerHTML = links.join("");
+  }
+
+  function prettyHost(url) {
+    try {
+      return new URL(url).hostname.replace(/^www\./, "");
+    } catch (_) {
+      return url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+    }
+  }
+
+  // -------- Pros & Cons --------
+  function renderProsCons(data) {
+    const pros = data.pros || [];
+    const cons = data.cons || [];
+    if (!pros.length && !cons.length) {
+      els.proconGroup.hidden = true;
+      return;
+    }
+    els.proconGroup.hidden = false;
+    els.prosList.innerHTML = pros.length
+      ? pros.map((p) => `<li>${escapeHtml(p)}</li>`).join("")
+      : `<li class="procon__empty">No notable pros flagged.</li>`;
+    els.consList.innerHTML = cons.length
+      ? cons.map((c) => `<li>${escapeHtml(c)}</li>`).join("")
+      : `<li class="procon__empty">No notable cons flagged.</li>`;
+  }
+
+  // -------- Recent news --------
+  function renderNews(data) {
+    const news = data.news || [];
+    if (!news.length) {
+      els.newsGroup.hidden = true;
+      return;
+    }
+    els.newsGroup.hidden = false;
+    els.newsList.innerHTML = news.map((n) => {
+      const when = relativeTime(n.published);
+      const meta = [n.publisher, when].filter(Boolean).join(" · ");
+      const inner = `
+        <span class="news-item__title">${escapeHtml(n.title)}</span>
+        <span class="news-item__meta">${escapeHtml(meta)}</span>`;
+      return n.link
+        ? `<a class="news-item" href="${escapeAttr(n.link)}" target="_blank" rel="noopener noreferrer">${inner}<span class="news-item__arrow">↗</span></a>`
+        : `<div class="news-item">${inner}</div>`;
+    }).join("");
+  }
+
+  function relativeTime(iso) {
+    if (!iso) return "";
+    const then = new Date(iso);
+    if (Number.isNaN(then.getTime())) return "";
+    const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+    if (days <= 0) return "today";
+    if (days === 1) return "yesterday";
+    if (days < 7) return `${days}d ago`;
+    if (days < 30) return `${Math.floor(days / 7)}w ago`;
+    return then.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  }
+
+  function escapeAttr(s) {
+    return escapeHtml(s);
   }
 
   function statCard({ label, value, sub, trend, pill }) {
@@ -805,4 +933,14 @@
       els.ohlcBtn.textContent = "Generate & Download";
     }
   });
+
+  // -------------------- Deep link (?q=SYMBOL) ----------
+  // Lets you share a direct link to a stock, e.g. /?q=RELIANCE
+  (function deepLink() {
+    const q = new URLSearchParams(location.search).get("q");
+    if (q) {
+      els.lookupInput.value = q;
+      runLookup();
+    }
+  })();
 })();

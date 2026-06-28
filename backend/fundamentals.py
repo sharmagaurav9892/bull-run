@@ -10,14 +10,15 @@ from __future__ import annotations
 import math
 import os
 import threading
-from typing import Any, Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yfinance as yf
 from curl_cffi import requests as crequests
 
 from .cache import TTLCache
-from .nse import get_index_pe, get_shareholding, sector_index_for
+from .nse import get_company_data, get_index_pe, sector_index_for
 from .symbols import Symbol, normalize_symbol
 
 _fund_cache = TTLCache(ttl_seconds=900)
@@ -310,6 +311,71 @@ def _returns(t: yf.Ticker) -> Dict[str, Optional[float]]:
 
 
 # ---------------------------------------------------------------------------
+# Recent news (last ~month)
+# ---------------------------------------------------------------------------
+
+
+def _news(t: yf.Ticker, days: int = 31, limit: int = 8) -> List[Dict[str, Any]]:
+    """Headlines from the last `days` days, newest first. [] on any failure."""
+    try:
+        raw = t.news or []
+    except Exception:
+        return []
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    items: List[Dict[str, Any]] = []
+    for n in raw:
+        # yfinance wraps each item under "content" in newer versions; tolerate both.
+        c = n.get("content") if isinstance(n.get("content"), dict) else n
+
+        title = c.get("title")
+        if not title:
+            continue
+
+        # Published timestamp: ISO string (pubDate) or epoch (providerPublishTime).
+        published = None
+        pub = c.get("pubDate") or c.get("displayTime")
+        if isinstance(pub, str):
+            try:
+                published = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+            except ValueError:
+                published = None
+        if published is None:
+            epoch = c.get("providerPublishTime") or n.get("providerPublishTime")
+            if epoch:
+                try:
+                    published = datetime.fromtimestamp(int(epoch), tz=timezone.utc)
+                except (TypeError, ValueError, OSError):
+                    published = None
+        if published is None or published < cutoff:
+            continue
+
+        # Link + publisher across the schema variants.
+        link = None
+        cu = c.get("canonicalUrl") or c.get("clickThroughUrl")
+        if isinstance(cu, dict):
+            link = cu.get("url")
+        link = link or c.get("link")
+
+        prov = c.get("provider")
+        publisher = prov.get("displayName") if isinstance(prov, dict) else (
+            prov or c.get("publisher")
+        )
+
+        items.append(
+            {
+                "title": title,
+                "publisher": publisher,
+                "link": link,
+                "published": published.isoformat(),
+            }
+        )
+
+    items.sort(key=lambda x: x["published"], reverse=True)
+    return items[:limit]
+
+
+# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -344,8 +410,20 @@ def get_fundamentals(user_input: str) -> Optional[Dict[str, Any]]:
         or _safe(fast.get("last_price"))
     )
     market_cap = _safe(info.get("marketCap")) or _safe(fast.get("market_cap"))
-    if current_price is None and market_cap is None:
-        # Definitely not a recognised NSE ticker.
+
+    # Pull the screener.in company page once: it is the canonical source Indian
+    # investors cross-check against, so we prefer its headline ratios (P/E,
+    # ROCE, ROE, market cap) over yfinance's — the numbers then *match* the site.
+    company = get_company_data(sym.nse)
+    ratios = company.get("ratios") or {}
+    scr_pe = ratios.get("Stock P/E")
+    scr_roce = ratios.get("ROCE")
+    scr_roe = ratios.get("ROE")
+    scr_mcap_cr = ratios.get("Market Cap")  # already in ₹ Cr
+    scr_price = ratios.get("Current Price")
+
+    if current_price is None and market_cap is None and scr_price is None and scr_mcap_cr is None:
+        # Not resolvable on either source — definitely not a recognised ticker.
         return None
 
     sector = info.get("sector")
@@ -353,8 +431,8 @@ def get_fundamentals(user_input: str) -> Optional[Dict[str, Any]]:
     sector_index = sector_index_for(sector, industry)
     sector_pe = get_index_pe(sector_index)
 
-    # ROCE: EBIT / (Total Assets - Current Liabilities)
-    roce = None
+    # ROCE fallback (if screener is unavailable): EBIT / (Total Assets - Current Liab).
+    roce_yf = None
     try:
         bal = t.balance_sheet
         inc = t.financials
@@ -363,21 +441,28 @@ def get_fundamentals(user_input: str) -> Optional[Dict[str, Any]]:
             cl = _safe(_row(bal, ["Current Liabilities", "Total Current Liabilities"])[bal.columns[0]]) if _row(bal, ["Current Liabilities", "Total Current Liabilities"]) is not None else None
             ebit = _safe(_row(inc, ["EBIT", "Operating Income"])[inc.columns[0]]) if _row(inc, ["EBIT", "Operating Income"]) is not None else None
             if ta and cl is not None and ebit is not None and (ta - cl) != 0:
-                roce = (ebit / (ta - cl)) * 100.0
+                roce_yf = (ebit / (ta - cl)) * 100.0
     except Exception:
         pass
 
     piotroski = _piotroski(t)
     altman = _altman_z(t, market_cap)
     rets = _returns(t)
-    holding = get_shareholding(sym.nse)
+    holding = company.get("shareholding")
+    news = _news(t)
 
-    market_cap_cr = (market_cap / 1e7) if market_cap is not None else None
+    # Prefer screener values so the displayed fundamentals match screener.in;
+    # fall back to yfinance / our own computation when screener is missing it.
+    current_price = current_price if current_price is not None else scr_price
+    market_cap_cr = scr_mcap_cr if scr_mcap_cr is not None else (
+        (market_cap / 1e7) if market_cap is not None else None
+    )
+    pe = scr_pe if scr_pe is not None else _safe(info.get("trailingPE"))
+    roce = scr_roce if scr_roce is not None else roce_yf
+    roe = scr_roe if scr_roe is not None else _pct(info.get("returnOnEquity"))
 
-    pe = _safe(info.get("trailingPE"))
     forward_pe = _safe(info.get("forwardPE"))
     peg = _safe(info.get("pegRatio")) or _safe(info.get("trailingPegRatio"))
-    roe = _pct(info.get("returnOnEquity"))
     d_to_e = _safe(info.get("debtToEquity"))
     if d_to_e is not None:
         # yfinance returns D/E as a percentage (e.g. 45.3 == 0.453). Normalise.
@@ -390,6 +475,11 @@ def get_fundamentals(user_input: str) -> Optional[Dict[str, Any]]:
         "name": info.get("longName") or info.get("shortName") or sym.nse,
         "sector": sector,
         "industry": industry,
+        "industry_link": company.get("industry"),
+        "website": company.get("website"),
+        "about": company.get("about"),
+        "pros": company.get("pros") or [],
+        "cons": company.get("cons") or [],
         "currency": info.get("currency") or "INR",
         "exchange": info.get("exchange") or "NSI",
         "fundamentals": {
@@ -407,6 +497,7 @@ def get_fundamentals(user_input: str) -> Optional[Dict[str, Any]]:
             "altman_z": altman,
             "shareholding": holding,
         },
+        "news": news,
         "returns": rets,
     }
 

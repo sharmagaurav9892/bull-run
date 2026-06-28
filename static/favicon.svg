@@ -1,6 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#0e1116"/>
-  <circle cx="16" cy="16" r="5" fill="#22c997"/>
-  <path d="M8 22 L13 17 L17 19 L24 11" stroke="#22c997" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M21 11 L24 11 L24 14" stroke="#22c997" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="Bull Run">
+  <defs>
+    <linearGradient id="br-emerald" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2bd9a6"/>
+      <stop offset="1" stop-color="#15a37b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App-icon badge -->
+  <rect width="40" height="40" rx="10" fill="#0e1116"/>
+  <rect x="0.6" y="0.6" width="38.8" height="38.8" rx="9.4" fill="none" stroke="#22c997" stroke-opacity="0.22"/>
+
+  <!-- Longhorn bull horns: a bold crescent with the tips sweeping up -->
+  <path d="M6.5 13 C 8 20.5, 13.5 23.5, 20 23.5 C 26.5 23.5, 32 20.5, 33.5 13"
+        fill="none" stroke="url(#br-emerald)" stroke-width="3.3"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The "run": an upward arrow bursting up between the horns -->
+  <path d="M20 27 L20 11.5"
+        fill="none" stroke="#3df0bd" stroke-width="3.1" stroke-linecap="round"/>
+  <path d="M14.4 17 L20 11 L25.6 17"
+        fill="none" stroke="#3df0bd" stroke-width="3.1"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

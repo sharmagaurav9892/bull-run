@@ -81,10 +81,10 @@ code {
   gap: 12px;
 }
 .brand-mark {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 18px rgba(34, 201, 151, 0.55);
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  display: block;
+  filter: drop-shadow(0 0 12px rgba(34, 201, 151, 0.35));
 }
 .brand h1 {
   font-size: 20px;
@@ -616,6 +616,185 @@ code {
   transition: width 0.4s ease;
 }
 
+/* ---------- Group heading inline link (website) ---------- */
+.group__link {
+  margin-left: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+.group__link:hover { color: var(--accent-strong); text-decoration: underline; }
+.group__link[hidden] { display: none; }
+.group[hidden] { display: none; }
+
+/* ---------- About ---------- */
+.card--about {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.about__text {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.65;
+}
+.about__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.about-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.about-chip:not(.about-chip--static):hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.about-chip__k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-mute);
+  font-weight: 700;
+}
+.about-chip__v {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.about-chip:not(.about-chip--static):hover .about-chip__v { color: var(--accent); }
+
+/* ---------- Pros & Cons ---------- */
+.procon-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.procon {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.procon--pros { border-top: 2px solid var(--accent); }
+.procon--cons { border-top: 2px solid var(--danger); }
+.procon__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.procon--pros .procon__title { color: var(--accent); }
+.procon--cons .procon__title { color: var(--danger); }
+.procon__list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.procon__list li {
+  position: relative;
+  padding-left: 24px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.procon__list li::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.procon--pros .procon__list li::before { content: "✓"; color: var(--accent); }
+.procon--cons .procon__list li::before { content: "✕"; color: var(--danger); }
+.procon__empty {
+  color: var(--text-mute) !important;
+  font-style: italic;
+  padding-left: 0 !important;
+}
+.procon__empty::before { content: "" !important; }
+
+/* ---------- Shareholding change pill ---------- */
+.holding-cell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.holding-delta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.holding-delta--up   { color: var(--accent); background: var(--accent-soft); }
+.holding-delta--down { color: var(--danger); background: var(--danger-soft); }
+.holding-delta--flat { color: var(--text-mute); background: var(--surface-3); }
+
+/* ---------- News ---------- */
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.news-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+}
+a.news-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-softer);
+  transform: translateY(-1px);
+}
+.news-item__title {
+  flex: 1;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+a.news-item:hover .news-item__title { color: var(--accent); }
+.news-item__meta {
+  flex: 0 0 auto;
+  color: var(--text-mute);
+  font-size: 11.5px;
+  font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;
+  max-width: 38%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.news-item__arrow {
+  flex: 0 0 auto;
+  color: var(--text-mute);
+  font-size: 14px;
+}
+a.news-item:hover .news-item__arrow { color: var(--accent); }
+
 /* ---------- Compare ---------- */
 .compare-inputs {
   display: grid;
@@ -992,6 +1171,12 @@ code {
   .compare-inputs { grid-template-columns: repeat(2, 1fr); }
   .ohlc-grid { grid-template-columns: 1fr; }
   .brand-sub { display: none; }
+}
+@media (max-width: 640px) {
+  .procon-grid { grid-template-columns: 1fr; }
+  .news-item { flex-wrap: wrap; gap: 4px 12px; }
+  .news-item__meta { max-width: none; }
+  .news-item__arrow { display: none; }
 }
 @media (max-width: 600px) {
   .app { padding: 16px 14px 32px; }

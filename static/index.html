@@ -17,7 +17,7 @@
     <main class="app">
       <header class="topbar">
         <div class="brand">
-          <span class="brand-mark" aria-hidden="true"></span>
+          <img class="brand-mark" src="/static/favicon.svg" alt="Bull Run logo" width="34" height="34" />
           <h1>Bull Run</h1>
           <span class="brand-sub">By Gaurav Sharma</span>
         </div>
@@ -72,6 +72,37 @@
               <span class="price__label">CMP (₹)</span>
             </div>
           </header>
+
+          <!-- About: what the company does + official links -->
+          <section class="group" id="aboutGroup" hidden>
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#22c997"></span>
+              About
+              <a class="group__link" id="aboutWebsite" target="_blank" rel="noopener noreferrer" hidden></a>
+            </h3>
+            <div class="card card--about">
+              <p class="about__text" id="aboutText"></p>
+              <div class="about__links" id="aboutLinks"></div>
+            </div>
+          </section>
+
+          <!-- Pros & Cons (auto-generated, à la screener.in) -->
+          <section class="group" id="proconGroup" hidden>
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#54e6b8"></span>
+              Pros &amp; Cons
+            </h3>
+            <div class="procon-grid">
+              <div class="procon procon--pros">
+                <h4 class="procon__title">Pros</h4>
+                <ul class="procon__list" id="prosList"></ul>
+              </div>
+              <div class="procon procon--cons">
+                <h4 class="procon__title">Cons</h4>
+                <ul class="procon__list" id="consList"></ul>
+              </div>
+            </div>
+          </section>
 
           <!-- Valuation: how the market prices this stock -->
           <section class="group">
@@ -142,6 +173,16 @@
                 <div class="chart-state" id="chartState">Loading…</div>
               </div>
             </div>
+          </section>
+
+          <!-- Recent news: headlines from the last month -->
+          <section class="group" id="newsGroup" hidden>
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#8b95a5"></span>
+              Recent News
+              <span class="group__sub">last 30 days</span>
+            </h3>
+            <div class="news-list" id="newsList"></div>
           </section>
         </div>
       </section>

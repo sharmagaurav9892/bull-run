@@ -12,14 +12,14 @@ from __future__ import annotations
 
 import re
 import threading
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from curl_cffi import requests as crequests
 
 from .cache import TTLCache
 
-_shareholding_cache = TTLCache(ttl_seconds=12 * 3600)
+_company_cache = TTLCache(ttl_seconds=6 * 3600)
 _index_pe_cache = TTLCache(ttl_seconds=3600)
 _search_cache = TTLCache(ttl_seconds=3600, max_entries=4096)
 
@@ -130,7 +130,13 @@ def get_index_pe(index_name: str) -> Optional[float]:
 
 
 # ---------------------------------------------------------------------------
-# Screener.in (shareholding pattern)
+# Screener.in (the canonical source for Indian fundamentals)
+#
+# One fetch of the company page powers everything we surface from screener:
+# headline ratios (P/E, ROCE, ROE, market cap — so our numbers MATCH the site
+# users cross-check against), the auto-generated Pros & Cons, the "About"
+# blurb, the official website + industry links, and the full shareholding
+# history (so we can show the change vs the previous quarter).
 # ---------------------------------------------------------------------------
 
 
@@ -147,73 +153,195 @@ def _screener() -> "crequests.Session":
         return _screener_session
 
 
-_SHAREHOLDING_LABEL_PAT = re.compile(
-    r'<td\s+class="text">\s*<button[^>]*>\s*'
-    r'(Promoters|FIIs?|DIIs?|Government|Public|Others)'
-    r'(?:&nbsp;|\s)*<span',
-    re.IGNORECASE,
-)
-_SHAREHOLDING_CELL_PAT = re.compile(r"<td[^>]*>\s*([0-9]+(?:\.[0-9]+)?)%\s*</td>")
+def _strip_tags(html: str) -> str:
+    """Plain text from an HTML fragment, dropping screener's [1]-style refs."""
+    html = re.sub(r"<sup>.*?</sup>", "", html, flags=re.S)
+    text = re.sub(r"<[^>]+>", "", html)
+    return (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&#39;", "'")
+        .replace("&quot;", '"')
+        .strip()
+    )
 
 
-def _scrape_shareholding(html: str) -> Optional[Dict[str, float]]:
-    """Pull the latest-quarter row of the screener.in shareholding table."""
-    # Narrow to the shareholding pattern section
+def _to_float(s: Optional[str]) -> Optional[float]:
+    if s is None:
+        return None
+    s = s.replace(",", "").replace("%", "").replace("₹", "").strip()
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_ratios(html: str) -> Dict[str, Optional[float]]:
+    """The top-of-page ratio strip: name -> numeric value."""
+    out: Dict[str, Optional[float]] = {}
+    block = re.search(r'<ul id="top-ratios".*?</ul>', html, re.S)
+    if not block:
+        return out
+    for li in re.findall(r"<li[^>]*>(.*?)</li>", block.group(0), re.S):
+        name = re.search(r'class="name">(.*?)</span>', li, re.S)
+        num = re.search(r'class="number">(.*?)</span>', li, re.S)
+        if name and num:
+            out[_strip_tags(name.group(1))] = _to_float(_strip_tags(num.group(1)))
+    return out
+
+
+def _parse_list(html: str, css_class: str) -> List[str]:
+    """Pros or Cons bullet list."""
+    block = re.search(r'class="%s".*?<ul>(.*?)</ul>' % css_class, html, re.S)
+    if not block:
+        return []
+    items = re.findall(r"<li[^>]*>(.*?)</li>", block.group(1), re.S)
+    return [t for t in (_strip_tags(li) for li in items) if t]
+
+
+def _parse_about(html: str) -> Optional[str]:
+    m = re.search(r'class="sub show-more-box about"[^>]*>(.*?)</div>', html, re.S)
+    if not m:
+        return None
+    about = _strip_tags(m.group(1))
+    return about or None
+
+
+def _parse_website(html: str) -> Optional[str]:
+    # The first link in the company-links block carries the bare website icon
+    # (icon-link), as opposed to the external BSE/NSE links (icon-link-ext).
+    m = re.search(
+        r'class="company-links.*?<a href="([^"]+)"[^>]*>\s*<i class="icon-link">',
+        html,
+        re.S,
+    )
+    return m.group(1) if m else None
+
+
+def _parse_industry(html: str) -> Optional[Dict[str, str]]:
+    """Most-specific classification from the sector→industry breadcrumb."""
+    crumbs = re.findall(
+        r'<a href="(/market/[^"]*)"[^>]*title="([^"]*)"[^>]*>(.*?)</a>', html, re.S
+    )
+    if not crumbs:
+        return None
+    chosen = None
+    for href, title, text in crumbs:
+        if title == "Industry":
+            chosen = (href, text)
+    if chosen is None:
+        href, _title, text = crumbs[-1]
+        chosen = (href, text)
+    return {"name": _strip_tags(chosen[1]), "url": "https://www.screener.in" + chosen[0]}
+
+
+_SH_LABELS = {
+    "promoter": ("promoter",),
+    "fii": ("fii",),
+    "dii": ("dii",),
+    "government": ("government",),
+    "public": ("public",),
+}
+
+
+def _parse_shareholding(html: str) -> Optional[Dict[str, Any]]:
+    """Latest + previous quarter holdings (so we can show the change)."""
     anchor = html.find('id="shareholding"')
     if anchor < 0:
         return None
-    section = html[anchor:anchor + 30000]
+    section = html[anchor:]
+    table = re.search(r"<table[^>]*>.*?</table>", section, re.S)
+    if not table:
+        return None
+    tbl = table.group(0)
 
-    # For each row label, grab the *last* percentage cell that follows it
-    # before the next labelled row (== latest quarter).
-    rows: Dict[str, float] = {}
-    matches = list(_SHAREHOLDING_LABEL_PAT.finditer(section))
-    for i, m in enumerate(matches):
-        label = m.group(1).lower().rstrip("s")  # promoter, fii, dii, government, public, other
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(section)
-        cells = _SHAREHOLDING_CELL_PAT.findall(section[start:end])
-        if not cells:
-            continue
-        try:
-            # Latest quarter is the last numeric column in the row.
-            rows[label] = float(cells[-1])
-        except ValueError:
-            continue
-
-    if not rows:
+    head = re.search(r"<thead.*?</thead>", tbl, re.S)
+    quarters = (
+        [_strip_tags(t) for t in re.findall(r"<th[^>]*>(.*?)</th>", head.group(0), re.S)]
+        if head
+        else []
+    )
+    body = re.search(r"<tbody.*?</tbody>", tbl, re.S)
+    if not body:
         return None
 
-    # Pull the latest quarter label out of the table header for display.
-    header_match = re.search(
-        r'<table[^>]*data-result-table[^>]*>[\s\S]{0,2000}?<thead[\s\S]*?</thead>',
-        section,
-    )
-    quarter = ""
-    if header_match:
-        ths = re.findall(r"<th[^>]*>([^<]+)</th>", header_match.group(0))
-        if ths:
-            quarter = ths[-1].strip()
+    rowmap: Dict[str, List[Optional[float]]] = {}
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", body.group(0), re.S):
+        label = re.search(r"<button[^>]*>(.*?)</span>", row, re.S) or re.search(
+            r'<td class="text">(.*?)</td>', row, re.S
+        )
+        if not label:
+            continue
+        key = _strip_tags(label.group(1)).rstrip("+").strip().lower()
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)[1:]  # drop label cell
+        rowmap[key] = [_to_float(_strip_tags(c)) for c in cells]
+
+    def pick(*names) -> Optional[List[Optional[float]]]:
+        for n in names:
+            for k, vals in rowmap.items():
+                if k.startswith(n):
+                    return vals
+        return None
+
+    def at(vals: Optional[List[Optional[float]]], back: int) -> Optional[float]:
+        if not vals or len(vals) < back + 1:
+            return None
+        return vals[-(back + 1)]
+
+    latest: Dict[str, Optional[float]] = {}
+    changes: Dict[str, Optional[float]] = {}
+    found_any = False
+    for key, names in _SH_LABELS.items():
+        vals = pick(*names)
+        cur = at(vals, 0)
+        prev = at(vals, 1)
+        latest[key] = cur
+        if cur is not None and prev is not None:
+            changes[key] = round(cur - prev, 2)
+        else:
+            changes[key] = None
+        if cur is not None:
+            found_any = True
+
+    if not found_any:
+        return None
 
     return {
-        "period": quarter,
-        "promoter": rows.get("promoter"),
-        "fii": rows.get("fii"),
-        "dii": rows.get("dii"),
-        "public": rows.get("public"),
-        "government": rows.get("government"),
+        "period": quarters[-1] if quarters else "",
+        "prev_period": quarters[-2] if len(quarters) > 1 else "",
+        "promoter": latest.get("promoter"),
+        "fii": latest.get("fii"),
+        "dii": latest.get("dii"),
+        "public": latest.get("public"),
+        "government": latest.get("government"),
+        "changes": changes,
     }
 
 
-def get_shareholding(symbol_nse: str) -> Optional[Dict[str, float]]:
-    """Latest shareholding pattern from screener.in. None on failure."""
-    cached = _shareholding_cache.get(symbol_nse)
+def get_company_data(symbol_nse: str) -> Dict[str, Any]:
+    """Everything we scrape from screener.in in a single page fetch.
+
+    Returns a dict (never None) with keys: ratios, pros, cons, about, website,
+    industry, shareholding. Missing pieces are None / empty so callers can rely
+    on the shape. Cached so a lookup + its compare reuse one fetch.
+    """
+    cached = _company_cache.get(symbol_nse)
     if cached is not None:
-        return cached if cached else None
+        return cached
+
+    empty: Dict[str, Any] = {
+        "ratios": {},
+        "pros": [],
+        "cons": [],
+        "about": None,
+        "website": None,
+        "industry": None,
+        "shareholding": None,
+    }
 
     sess = _screener()
-    # Try consolidated first (most relevant for diversified businesses);
-    # fall back to standalone.
+    html = None
+    # Consolidated first (most relevant for groups), then standalone.
     for url in (
         f"https://www.screener.in/company/{symbol_nse}/consolidated/",
         f"https://www.screener.in/company/{symbol_nse}/",
@@ -222,15 +350,31 @@ def get_shareholding(symbol_nse: str) -> Optional[Dict[str, float]]:
             r = sess.get(url, timeout=12)
         except Exception:
             continue
-        if r.status_code != 200:
-            continue
-        result = _scrape_shareholding(r.text)
-        if result:
-            _shareholding_cache.set(symbol_nse, result)
-            return result
+        if r.status_code == 200 and "top-ratios" in r.text:
+            html = r.text
+            break
 
-    _shareholding_cache.set(symbol_nse, {})
-    return None
+    if html is None:
+        # Cache the miss briefly so a dead symbol doesn't hammer screener.
+        _company_cache.set(symbol_nse, empty)
+        return empty
+
+    data = {
+        "ratios": _parse_ratios(html),
+        "pros": _parse_list(html, "pros"),
+        "cons": _parse_list(html, "cons"),
+        "about": _parse_about(html),
+        "website": _parse_website(html),
+        "industry": _parse_industry(html),
+        "shareholding": _parse_shareholding(html),
+    }
+    _company_cache.set(symbol_nse, data)
+    return data
+
+
+def get_shareholding(symbol_nse: str) -> Optional[Dict[str, Any]]:
+    """Latest shareholding pattern (with quarter-over-quarter change)."""
+    return get_company_data(symbol_nse).get("shareholding")
 
 
 # ---------------------------------------------------------------------------
