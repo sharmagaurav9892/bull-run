@@ -8,10 +8,13 @@ and Altman Z-score, then adds NSE-sourced sectoral P/E and shareholding.
 from __future__ import annotations
 
 import math
+import os
+import threading
 from typing import Any, Dict, Optional
 
 import pandas as pd
 import yfinance as yf
+from curl_cffi import requests as crequests
 
 from .cache import TTLCache
 from .nse import get_index_pe, get_shareholding, sector_index_for
@@ -25,11 +28,43 @@ _ticker_cache: Dict[str, yf.Ticker] = {}
 # yfinance helpers
 # ---------------------------------------------------------------------------
 
+# Yahoo's quote/fundamentals endpoint (quoteSummary) is hard to reach from
+# datacenter IPs: it requires a crumb+cookie that Yahoo refuses to hand out to
+# cloud hosts (Render, Railway, AWS, ...). Two mitigations, both opt-safe:
+#   1. Impersonate a real Chrome via curl_cffi so the TLS fingerprint and
+#      headers look like a browser rather than a bot.
+#   2. Optionally route every Yahoo call through a proxy (YF_PROXY env var).
+#      A residential proxy bypasses the IP-based block entirely. Unset locally
+#      so local behaviour is unchanged.
+_YF_PROXY = os.environ.get("YF_PROXY") or None
+
+# Apply the proxy globally so chart/OHLC calls (prices.py, ohlc.py) route
+# through it too, not just the fundamentals fetch below.
+if _YF_PROXY:
+    try:
+        yf.set_config(proxy=_YF_PROXY)
+    except Exception:
+        pass
+
+_session_lock = threading.Lock()
+_yf_session: Optional["crequests.Session"] = None
+
+
+def _session() -> "crequests.Session":
+    global _yf_session
+    with _session_lock:
+        if _yf_session is None:
+            _yf_session = crequests.Session(impersonate="chrome131")
+        return _yf_session
+
 
 def _ticker(symbol_yf: str) -> yf.Ticker:
     t = _ticker_cache.get(symbol_yf)
     if t is None:
-        t = yf.Ticker(symbol_yf)
+        # Proxy is applied globally via yf.set_config above; passing it to the
+        # Ticker constructor trips a bug in yfinance 0.2.66. Session carries the
+        # Chrome impersonation.
+        t = yf.Ticker(symbol_yf, session=_session())
         _ticker_cache[symbol_yf] = t
     return t
 
