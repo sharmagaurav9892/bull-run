@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Bull Run · NSE stocks at a glance</title>
+    <meta name="description" content="Quick fundamentals, comparisons, and OHLC export for NSE-listed stocks." />
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <h1>Bull Run</h1>
+          <span class="brand-sub">By Gaurav Sharma</span>
+        </div>
+        <nav class="tabs" role="tablist">
+          <button class="tab is-active" data-tab="lookup" role="tab" aria-selected="true">Lookup</button>
+          <button class="tab" data-tab="compare" role="tab" aria-selected="false">Compare</button>
+          <button class="tab" data-tab="ohlc" role="tab" aria-selected="false">OHLC Export</button>
+        </nav>
+      </header>
+
+      <!-- ============================== LOOKUP ============================== -->
+      <section class="panel" id="panel-lookup" role="tabpanel">
+        <div class="card card--input">
+          <label class="field">
+            <span class="field__label">Stock</span>
+            <div class="field__row">
+              <div class="ac-wrap">
+                <input
+                  id="lookupInput"
+                  class="input"
+                  type="text"
+                  placeholder="Start typing — e.g. reliance, tcs, hdfc bank"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="ac-list hidden" id="lookupAc" role="listbox"></div>
+              </div>
+              <button class="btn btn--primary" id="lookupBtn">Analyse</button>
+            </div>
+            <span class="field__hint">Any NSE symbol or company name. Use <span class="kbd">↑</span><span class="kbd">↓</span> to navigate suggestions, <span class="kbd">Enter</span> to select.</span>
+          </label>
+        </div>
+
+        <div class="state state--idle" id="lookupState">
+          <p>Type any NSE stock and hit <span class="kbd">Enter</span> to see its core fundamentals and returns.</p>
+        </div>
+
+        <!-- Animated loader (built by app.js), shown only while a lookup is in flight -->
+        <div class="loader hidden" id="lookupLoader"></div>
+
+        <div class="result hidden" id="lookupResult">
+          <header class="result__head">
+            <div>
+              <h2 class="result__name" id="lookupName">—</h2>
+              <div class="result__meta">
+                <span class="chip" id="lookupSymbol">—</span>
+                <span class="chip chip--ghost" id="lookupSector">—</span>
+              </div>
+            </div>
+            <div class="result__price">
+              <span class="price__value" id="lookupPrice">—</span>
+              <span class="price__label">CMP (₹)</span>
+            </div>
+          </header>
+
+          <!-- Valuation: how the market prices this stock -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#22c997"></span>
+              Valuation
+            </h3>
+            <div class="group__grid" id="groupValuation"></div>
+          </section>
+
+          <!-- Profitability: how efficiently it earns -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#54e6b8"></span>
+              Profitability &amp; Quality
+            </h3>
+            <div class="group__grid" id="groupProfit"></div>
+          </section>
+
+          <!-- Financial health: solvency / risk -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#f0b429"></span>
+              Financial Health
+            </h3>
+            <div class="group__grid" id="groupHealth"></div>
+          </section>
+
+          <!-- Returns: time-windowed price performance -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#2bd9a6"></span>
+              Returns
+            </h3>
+            <div class="group__grid group__grid--returns" id="groupReturns"></div>
+          </section>
+
+          <!-- Shareholding: who owns the company -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#8b95a5"></span>
+              Shareholding Pattern
+              <span class="group__sub" id="holdingPeriod"></span>
+            </h3>
+            <div class="holding-grid" id="lookupHolding"></div>
+          </section>
+
+          <!-- Price chart: stays at the bottom -->
+          <section class="group">
+            <h3 class="group__label">
+              <span class="group__dot" style="--dot:#f0b429"></span>
+              Price Chart
+              <span class="group__sub" id="chartReturnInline"></span>
+            </h3>
+            <div class="card card--chart">
+              <div class="card__head">
+                <div class="range-toggle" id="rangeToggle" role="tablist">
+                  <button class="range-btn" data-range="1d">1D</button>
+                  <button class="range-btn" data-range="1w">1W</button>
+                  <button class="range-btn" data-range="1m">1M</button>
+                  <button class="range-btn is-active" data-range="1y">1Y</button>
+                  <button class="range-btn" data-range="5y">5Y</button>
+                </div>
+                <span class="chart-foot__value" id="chartReturn">—</span>
+              </div>
+              <div class="chart-wrap">
+                <canvas id="lookupChart"></canvas>
+                <div class="chart-state" id="chartState">Loading…</div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ============================== COMPARE ============================= -->
+      <section class="panel hidden" id="panel-compare" role="tabpanel">
+        <div class="card card--input">
+          <h3 class="card__title">Compare 2–4 NSE stocks</h3>
+          <div class="compare-inputs" id="compareInputs">
+            <div class="ac-wrap">
+              <input class="input" type="text" placeholder="Stock 1" data-cmp-idx="0" autocomplete="off" spellcheck="false" />
+              <div class="ac-list hidden" role="listbox"></div>
+            </div>
+            <div class="ac-wrap">
+              <input class="input" type="text" placeholder="Stock 2" data-cmp-idx="1" autocomplete="off" spellcheck="false" />
+              <div class="ac-list hidden" role="listbox"></div>
+            </div>
+            <div class="ac-wrap">
+              <input class="input" type="text" placeholder="Stock 3 (optional)" data-cmp-idx="2" autocomplete="off" spellcheck="false" />
+              <div class="ac-list hidden" role="listbox"></div>
+            </div>
+            <div class="ac-wrap">
+              <input class="input" type="text" placeholder="Stock 4 (optional)" data-cmp-idx="3" autocomplete="off" spellcheck="false" />
+              <div class="ac-list hidden" role="listbox"></div>
+            </div>
+          </div>
+          <div class="card__actions">
+            <button class="btn btn--primary" id="compareBtn">Compare</button>
+            <button class="btn btn--ghost" id="compareClearBtn">Clear</button>
+          </div>
+        </div>
+
+        <div class="state state--idle" id="compareState">
+          <p>Add at least two NSE tickers above to get a side-by-side breakdown.</p>
+        </div>
+
+        <div class="loader hidden" id="compareLoader"></div>
+
+        <div class="result hidden" id="compareResult">
+          <div class="card card--verdict" id="compareVerdict"></div>
+          <div class="card card--table">
+            <h3 class="card__title">Side-by-side fundamentals</h3>
+            <div class="table-wrap">
+              <table class="cmp-table" id="cmpTable">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p class="table-foot">
+              Green badges mark the best value per row. Lower is better for P/E, PEG, D/E and P/E-vs-sector.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== OHLC EXPORT ========================= -->
+      <section class="panel hidden" id="panel-ohlc" role="tabpanel">
+        <div class="card card--input">
+          <h3 class="card__title">Bulk OHLC download</h3>
+          <p class="card__sub">
+            Upload a CSV or TXT with NSE tickers (one per line, a column named <code>Symbol</code>,
+            or just space/comma-separated). We'll return a single CSV with daily
+            Open/High/Low/Close/Volume for each.
+          </p>
+
+          <div class="ohlc-grid">
+            <label class="field">
+              <span class="field__label">CSV / TXT file</span>
+              <div class="file-drop" id="fileDrop">
+                <input type="file" id="ohlcFile" accept=".csv,.txt,text/csv,text/plain" hidden />
+                <button type="button" class="btn btn--ghost" id="fileBrowseBtn">Choose file…</button>
+                <span class="file-drop__name" id="fileName">No file chosen</span>
+              </div>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Range</span>
+              <div class="range-toggle range-toggle--lg" id="ohlcRange">
+                <button class="range-btn" data-range="1mo">1M</button>
+                <button class="range-btn is-active" data-range="1y">1Y</button>
+                <button class="range-btn" data-range="5y">5Y</button>
+                <button class="range-btn" data-range="10y">10Y</button>
+                <button class="range-btn" data-range="20y">20Y</button>
+              </div>
+              <span class="field__hint">
+                Stocks listed for less than the chosen window will simply return whatever history is available.
+              </span>
+            </label>
+          </div>
+
+          <div class="card__actions">
+            <button class="btn btn--primary" id="ohlcBtn" disabled>Generate &amp; Download</button>
+          </div>
+        </div>
+
+        <div class="state state--idle" id="ohlcState">
+          <p>
+            Accepted token formats:
+            <code>RELIANCE</code>, <code>NSE:TCS</code>, <code>INFY.NS</code> — in either CSV or TXT.
+          </p>
+        </div>
+
+        <div class="loader hidden" id="ohlcLoader"></div>
+      </section>
+
+      <footer class="footer">
+        <span>Powered by chai, candlesticks &amp; the occasional panic sell. 🐂📈</span>
+      </footer>
+    </main>
+
+    <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

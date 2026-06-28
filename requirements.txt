@@ -1,0 +1,7 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+yfinance==0.2.66
+curl-cffi==0.13.0
+pandas==2.2.3
+requests==2.32.3
+python-multipart==0.0.20
