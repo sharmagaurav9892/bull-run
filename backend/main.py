@@ -29,9 +29,11 @@ try:  # urllib3 may or may not be importable at this point depending on env
 except Exception:
     pass
 
+import hashlib
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -140,12 +142,35 @@ async def ohlc_csv(
 # ---------------------------------------------------------------------------
 
 
+def _asset_version() -> str:
+    """Short content hash of the CSS/JS so we can cache-bust them.
+
+    The domain sits behind Cloudflare, which caches static assets aggressively.
+    We stamp the asset URLs in index.html with ?v=<hash>; when their contents
+    change, the URL changes, so a deploy is picked up immediately instead of
+    serving a stale stylesheet/script from the edge cache.
+    """
+    h = hashlib.md5()
+    for name in ("styles.css", "app.js", "favicon.svg"):
+        try:
+            h.update((STATIC_DIR / name).read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+_ASSET_V = _asset_version()
+
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC_DIR / "index.html")
+        # Inject the asset version so cached CSS/JS bust on every content change.
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        html = html.replace("__ASSET_V__", _ASSET_V)
+        return HTMLResponse(html)
 
     @app.get("/favicon.ico")
     def favicon():
